@@ -1,0 +1,8 @@
+# 统一换行符：仓库里一律 LF，避免 Windows 上的 CRLF 破坏
+# .github/workflows/*.yml 在 Linux runner 上的 shell 执行。
+* text=auto eol=lf
+
+# 二进制/资源
+*.png binary
+*.jpg binary
+*.ico binary

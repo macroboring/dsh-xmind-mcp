@@ -1,0 +1,18 @@
+# 依赖与构建产物
+node_modules/
+dist/
+coverage/
+
+# 运行期凭据与状态（本包的凭据默认写在 $DSH_HOME/xmind-mcp，这里防御性忽略）
+tokens.json
+client.json
+settings.json
+tools-cache.json
+bridge.log
+*.log
+
+# 临时文件
+*.tmp
+*.bak*
+.DS_Store
+Thumbs.db

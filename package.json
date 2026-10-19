@@ -1,0 +1,61 @@
+{
+  "name": "dsh-xmind-mcp",
+  "version": "2.0.0",
+  "type": "module",
+  "description": "Xmind cloud mind-map plugin for DeepSeek Harness: 35 mcp__xmind__* tools to list, read, create and rewrite the user's Xmind maps (\"我的导图\") from natural language. OAuth 2.1 with automatic token refresh, zero dependencies.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "xmind",
+    "mindmap",
+    "mcp"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/macroboring/dsh-xmind-mcp.git"
+  },
+  "homepage": "https://github.com/macroboring/dsh-xmind-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/macroboring/dsh-xmind-mcp/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "icon": "./icon.svg",
+  "exports": {
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "index.mjs",
+    "cli.mjs",
+    "install.mjs",
+    "selftest.mjs",
+    "lib",
+    "locale",
+    "test",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md",
+    "HANDOFF.md",
+    "PUBLISHING.md",
+    "PROVENANCE.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node selftest.mjs && node test/refresh.test.mjs && node test/install.test.mjs && node test/no-machine-paths.mjs",
+    "selftest": "node selftest.mjs",
+    "doctor": "node cli.mjs doctor"
+  },
+  "bin": {
+    "dsh-xmind-mcp": "./cli.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

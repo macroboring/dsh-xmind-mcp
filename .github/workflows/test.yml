@@ -1,0 +1,49 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      # 本包零依赖，不需要 npm install
+      - run: node selftest.mjs
+      - run: node test/refresh.test.mjs
+      - run: node test/install.test.mjs
+      - run: node test/no-machine-paths.mjs
+
+  portability:
+    name: 发布包可移植性
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node test/no-machine-paths.mjs
+      # npm 发布清单里不能出现凭据或日志
+      - name: npm pack 清单检查
+        run: |
+          set -e
+          npm pack --dry-run 2>&1 | tee pack.txt
+          for bad in tokens.json client.json bridge.log node_modules; do
+            if grep -q "$bad" pack.txt; then
+              echo "::error::npm 发布清单里出现了 $bad"
+              exit 1
+            fi
+          done
+          echo "OK：发布清单干净"

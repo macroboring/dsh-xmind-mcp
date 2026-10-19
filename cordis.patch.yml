@@ -1,0 +1,33 @@
+# dsh-xmind-mcp — 组合包补丁（configuration-only bundle）
+#
+# 本文件不含任何机器相关路径：路径在加载时由 Loader 表达式按「当前 profile」解析，
+# 所以同一份包在 Windows / macOS / Linux / 鸿蒙 上装上即可用，无需按机器生成。
+#
+# 设计要点：
+#   command  = process.execPath（宿主本体）＋ ELECTRON_RUN_AS_NODE=1 当 node 用。
+#              这正是 DSH 自带的 dsh.cmd 采用的机制：Electron 本体在
+#              ELECTRON_RUN_AS_NODE=1 下就是完整 Node（实测 node 24）。
+#   args     = 本包自己的 index.mjs。位置由 <DSH_HOME>/profiles/<profile>/node_modules/<包名>
+#              推出，所以安装在哪台机器、哪个 profile 都不用改这张表。
+#   XMIND_MCP_HOME = 令牌/日志目录，默认 <DSH_HOME>/xmind-mcp。
+#
+# 逃生口（安装位置不标准时，设环境变量后重启 DSH）：
+#   XMIND_MCP_NODE   = 指定 node 绝对路径（覆盖 process.execPath）
+#   XMIND_MCP_ENTRY  = 指定 index.mjs 绝对路径（覆盖自动推导）
+- insert:
+    - id: xmind-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: xmind
+        transport: stdio
+        command: !!js process.env.XMIND_MCP_NODE || process.execPath
+        args:
+          - !!js process.env.XMIND_MCP_ENTRY || dshHomePath('profiles', ctx.get('profileContext').name, 'node_modules', 'dsh-xmind-mcp', 'index.mjs')
+        env:
+          ELECTRON_RUN_AS_NODE: '1'
+          XMIND_MCP_HOME: !!js dshHomePath('xmind-mcp')
+          XMIND_MCP_ORIGIN: 'https://app.xmind.cn'
+        toolCallTimeoutMs: 240000
+        reconnect:
+          enabled: true
+        failOnStartupError: false

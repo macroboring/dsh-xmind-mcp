@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Xmind connector",
+    "description": "Create, read and rewrite the user's Xmind cloud mind maps (\"我的导图\") from natural language. Adds 35 mcp__xmind__* tools; OAuth runs locally with automatic token refresh; no data goes anywhere but Xmind."
+  }
+}

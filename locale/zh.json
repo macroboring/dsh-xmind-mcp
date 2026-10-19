@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Xmind 连接器",
+    "description": "用自然语言列出、读取、新建和改写 Xmind 云端「我的导图」。提供 35 个 mcp__xmind__* 工具；OAuth 授权在本机完成、令牌自动续期，数据只去 Xmind。"
+  }
+}
