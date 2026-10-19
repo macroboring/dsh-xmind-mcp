@@ -68,6 +68,7 @@ function runInstall(dir, args = []) {
 }
 
 const read = (dir) => fs.readFileSync(path.join(dir, 'cordis.patch.yml'), 'utf8')
+const YAML_RAW = () => fs.readFileSync(path.join(project, 'cordis.patch.yml'), 'utf8')
 const hasXmind = (text) => text.includes('xmind-mcp')
 
 /** Parses when a YAML library is available, and always checks the structure. */
@@ -94,32 +95,22 @@ check('全新 profile（模板以 [] 结尾）安装后仍是合法 YAML', () =>
   assert.ok(hasXmind(text), '应包含 xmind-mcp 条目')
 })
 
-check('安装写入的条目不含任何机器相关绝对路径', () => {
+check('组合包补丁使用包名入口，可跨机器安装', () => {
+  const text = YAML_RAW()
+  assert.match(text, /name:\s*'dsh-xmind-mcp'/, '组合包补丁的 name 应是包名（由 loader 解析 main）')
+  assert.ok(!/(?:^|[\s'"([])(?:[A-Za-z]:[\\/](?!\/))/.test(text), '组合包补丁不应含盘符路径')
+})
+
+check('手动安装只引入一处机器路径，且指向本包入口', () => {
   const dir = makeProfile(FRESH_TEMPLATE)
   assert.equal(runInstall(dir).status, 0)
   const text = read(dir)
-  // A drive letter or a POSIX root only counts when it starts a path token, so a
-  // URL scheme like https:// never trips this.
   const MACHINE_PATH = /(?:^|[\s'"([])(?:[A-Za-z]:[\\/](?!\/)|\/(?:Users|home|root|data|var|opt|tmp)\/)/
-  const offending = text
-    .split(/\r?\n/)
-    .filter((line) => !line.trim().startsWith('#') && MACHINE_PATH.test(line))
-  assert.deepEqual(offending, [], `出现机器路径：\n${offending.join('\n')}`)
-  assert.ok(text.includes('!!js'), '应使用 !!js 表达式在加载时解析路径')
-  assert.ok(text.includes('dshHomePath'), '应通过 dshHomePath 定位包与 home')
-  if (YAML) {
-    const parsed = parseYaml(text)
-    const row = (parsed || []).find((entry) => entry?.insert?.[0]?.id === 'xmind-mcp')
-    assert.ok(row, '应插入 id 为 xmind-mcp 的行')
-    const config = row.insert[0].config
-    assert.equal(config.serverName, 'xmind')
-    assert.equal(config.transport, 'stdio')
-    assert.ok(config.command?.__jsExpr, 'command 应是 !!js 表达式')
-    assert.ok(config.args?.[0]?.__jsExpr, 'args 应是 !!js 表达式')
-    assert.ok(config.env?.XMIND_MCP_HOME?.__jsExpr, 'XMIND_MCP_HOME 应是 !!js 表达式')
-  }
+  const offending = text.split(/\r?\n/).filter((line) => !line.trim().startsWith('#') && MACHINE_PATH.test(line))
+  assert.equal(offending.length, 1, `手动安装应只引入一处机器路径，实际 ${offending.length} 处：\n${offending.join('\n')}`)
+  assert.match(offending[0], /name:/, '这唯一一处应是 name 指向本包入口')
+  assert.match(offending[0], /host[\\/]index\.mjs/)
 })
-
 check('已有用户条目时安装：保留原条目且可重复安装', () => {
   const dir = makeProfile(USER_ENTRY)
   assert.equal(runInstall(dir).status, 0)

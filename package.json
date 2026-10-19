@@ -1,15 +1,17 @@
 {
   "name": "dsh-xmind-mcp",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "type": "module",
-  "description": "Xmind cloud mind-map plugin for DeepSeek Harness: 35 mcp__xmind__* tools to list, read, create and rewrite the user's Xmind maps (\"我的导图\") from natural language. OAuth 2.1 with automatic token refresh, zero dependencies.",
+  "description": "Xmind cloud mind-map plugin for DeepSeek Harness: 35 xmind_* tools to list, read, create and rewrite the user's Xmind maps from natural language. Runs fully in-process (no child process), so it works on HarmonyOS/DSHM where fork/exec is forbidden. OAuth 2.1 with automatic token refresh, zero dependencies.",
   "keywords": [
     "dsh",
     "dsh-plugin",
     "deepseek-harness",
     "xmind",
     "mindmap",
-    "mcp"
+    "mcp",
+    "harmonyos",
+    "ondevice"
   ],
   "license": "MIT",
   "repository": {
@@ -24,18 +26,18 @@
     "node": ">=20"
   },
   "icon": "./icon.svg",
+  "main": "./host/index.mjs",
   "exports": {
+    ".": "./host/index.mjs",
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json"
   },
   "files": [
-    "index.mjs",
-    "cli.mjs",
-    "install.mjs",
-    "selftest.mjs",
+    "host",
     "lib",
     "locale",
     "test",
+    "cli.mjs",
     "icon.svg",
     "cordis.patch.yml",
     "README.md",
@@ -43,11 +45,11 @@
     "HANDOFF.md",
     "PUBLISHING.md",
     "PROVENANCE.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
-    "test": "node selftest.mjs && node test/refresh.test.mjs && node test/install.test.mjs && node test/no-machine-paths.mjs",
-    "selftest": "node selftest.mjs",
+    "test": "node test/refresh.test.mjs && node test/host-plugin.test.mjs && node test/install.test.mjs && node test/no-machine-paths.mjs",
     "doctor": "node cli.mjs doctor"
   },
   "bin": {

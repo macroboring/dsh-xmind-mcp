@@ -21,8 +21,8 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       # 本包零依赖，不需要 npm install
-      - run: node selftest.mjs
       - run: node test/refresh.test.mjs
+      - run: node test/host-plugin.test.mjs
       - run: node test/install.test.mjs
       - run: node test/no-machine-paths.mjs
 

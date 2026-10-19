@@ -1,33 +1,19 @@
-# dsh-xmind-mcp — 组合包补丁（configuration-only bundle）
+# dsh-xmind-mcp —— 进程内 Host 插件（不再有子进程）
 #
-# 本文件不含任何机器相关路径：路径在加载时由 Loader 表达式按「当前 profile」解析，
-# 所以同一份包在 Windows / macOS / Linux / 鸿蒙 上装上即可用，无需按机器生成。
+# 为什么不是 stdio 型 MCP：端侧宿主（HarmonyOS/DSHM 等）禁止 fork/exec、也没有 node
+# 可执行文件，spawn 必然失败，表现为 `mcp-client(xmind): server is disconnected`，而且
+# 桥一次都不会被执行。本补丁改为插入插件自身：
 #
-# 设计要点：
-#   command  = process.execPath（宿主本体）＋ ELECTRON_RUN_AS_NODE=1 当 node 用。
-#              这正是 DSH 自带的 dsh.cmd 采用的机制：Electron 本体在
-#              ELECTRON_RUN_AS_NODE=1 下就是完整 Node（实测 node 24）。
-#   args     = 本包自己的 index.mjs。位置由 <DSH_HOME>/profiles/<profile>/node_modules/<包名>
-#              推出，所以安装在哪台机器、哪个 profile 都不用改这张表。
-#   XMIND_MCP_HOME = 令牌/日志目录，默认 <DSH_HOME>/xmind-mcp。
+#   · name 是包名，由 loader 从 profile 的 node_modules 解析到本包 main（host/index.mjs），
+#   · OAuth（动态注册 + PKCE + 127.0.0.1 回调）与远端 MCP 调用都在**宿主进程内**完成；
+#   · 云端工具用 ctx.tools.register 注册为原生 dsh 工具（名字沿用 xmind_*）；
+#   · 只用 node: 内置模块与全局 fetch，不解析任何裸包名（端侧工作区没有 node_modules）；
+#   · 激活期间绝不 throw：失败只写 $DSH_HOME/xmind-mcp/bridge.log，不拖垮宿主启动。
 #
-# 逃生口（安装位置不标准时，设环境变量后重启 DSH）：
-#   XMIND_MCP_NODE   = 指定 node 绝对路径（覆盖 process.execPath）
-#   XMIND_MCP_ENTRY  = 指定 index.mjs 绝对路径（覆盖自动推导）
+# 可调环境变量：
+#   XMIND_MCP_ORIGIN       默认 https://app.xmind.cn（中国站）；国际站 https://app.xmind.com
+#   XMIND_MCP_TIMEOUT_MS   单次云端工具调用超时，默认 240000（建图/改写常需 30–120 秒）
+#   XMIND_MCP_HOME         凭据与日志目录，默认 <DSH_HOME>/xmind-mcp
 - insert:
     - id: xmind-mcp
-      name: '@deepseek-ai/dsh-mcp-client'
-      config:
-        serverName: xmind
-        transport: stdio
-        command: !!js process.env.XMIND_MCP_NODE || process.execPath
-        args:
-          - !!js process.env.XMIND_MCP_ENTRY || dshHomePath('profiles', ctx.get('profileContext').name, 'node_modules', 'dsh-xmind-mcp', 'index.mjs')
-        env:
-          ELECTRON_RUN_AS_NODE: '1'
-          XMIND_MCP_HOME: !!js dshHomePath('xmind-mcp')
-          XMIND_MCP_ORIGIN: 'https://app.xmind.cn'
-        toolCallTimeoutMs: 240000
-        reconnect:
-          enabled: true
-        failOnStartupError: false
+      name: 'dsh-xmind-mcp'

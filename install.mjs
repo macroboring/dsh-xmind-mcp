@@ -63,7 +63,12 @@ function stripBlock(content) {
 function packageRow() {
   const raw = readFile(BUNDLE_PATCH)
   if (raw === null) throw new Error(`缺少本包的组合包补丁：${BUNDLE_PATCH}`)
-  return raw.trimEnd()
+  // 组合包补丁里 name 是包名，由 loader 从 profile 的 node_modules 解析。
+  // 手写进 profile 的路线不保证包被安装到 profile，所以改写成指向本包入口的绝对路径
+  // （第三方插件的本地开发也是这么做的）——这是手动兜底路线上唯一需要机器相关的值。
+  const entry = path.join(here, 'host', 'index.mjs')
+  const quoted = `'${entry.replace(/'/g, "''")}'`
+  return raw.replaceAll("name: 'dsh-xmind-mcp'", `name: ${quoted}`).trimEnd()
 }
 
 function main() {

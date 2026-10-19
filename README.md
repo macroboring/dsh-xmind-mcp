@@ -3,153 +3,170 @@
 Connect **Xmind cloud mind maps** ("我的导图") to DeepSeek Harness: list, read, create and rewrite your
 Xmind maps from natural language.
 
-Installing it adds **35 `mcp__xmind__*` tools** to the agent's toolset — `xmind_create_mindmap`,
-`xmind_read_mindmap`, `xmind_edit_mindmap`, `xmind_show_mindmap`, folder/space management, topic
-styles, relationships, boundaries, summaries, to-dos, Gantt scheduling, multi-sheet files — plus three
-local tools: `login`, `status`, `logout`.
+**Since v3 the plugin runs entirely in-process**: it spawns no child process and needs no `node`
+executable, so it also works on on-device hosts that **forbid fork/exec** (e.g. DSHM on HarmonyOS).
 
-- **Zero dependencies** — nothing to `npm install` (`@deepseek-ai/dsh-mcp-client` ships with DSH).
-- **No machine-specific paths** in the bundle — the same package runs on any machine and any profile.
-- **OAuth stays local** — dynamic client registration + PKCE; tokens are stored on this machine and
-  refreshed automatically. Nothing passes through a third-party server.
+- **35 cloud tools** + 3 local tools, all registered as **native dsh tools** (`xmind_list_mindmaps`,
+  not `mcp__xmind__*`)
+- **Zero runtime dependencies**: Node built-ins plus the global `fetch` only
+- **No machine paths in the bundle**: the patch inserts `name: 'dsh-xmind-mcp'` (a package name the
+  loader resolves from the profile's `node_modules`)
+- **OAuth stays local**: dynamic client registration + PKCE; tokens are stored on this machine and
+  refreshed automatically; nothing passes through a third-party server
+- **Diagnosable failures**: activation never throws; registration, sync and authorization failures are
+  written to `$DSH_HOME/xmind-mcp/bridge.log`
 
 > 中文文档：[README.zh.md](README.zh.md)
 
 ---
 
-## 1. Why the manifest contains no absolute paths
+## 1. Why in-process
 
-A stdio MCP plugin usually has to hard-code the absolute path of the Node binary and of its entry
-script, which breaks on the next machine. This package computes both **at load time** with Loader
-expressions, so one manifest works everywhere:
+A stdio MCP server needs the host to spawn a child process (usually `command: process.execPath` with
+`ELECTRON_RUN_AS_NODE=1`). An on-device host is **not Electron**, ships **no `node` executable**, and
+**forbids fork/exec**, so the spawn always fails with `mcp-client(xmind): server is disconnected` and
+the bridge never runs at all.
 
-```yaml
-command: !!js process.env.XMIND_MCP_NODE || process.execPath
-args:
-  - !!js process.env.XMIND_MCP_ENTRY || dshHomePath('profiles', ctx.get('profileContext').name, 'node_modules', 'dsh-xmind-mcp', 'index.mjs')
-env:
-  ELECTRON_RUN_AS_NODE: '1'          # the host binary acts as Node under Electron — same trick dsh.cmd uses
-  XMIND_MCP_HOME: !!js dshHomePath('xmind-mcp')
+This plugin instead follows option B of the on-device problem report:
+
+```
+DSH agent ──native tool call──> host/index.mjs (inside the host process) ──HTTPS+Bearer──> app.xmind.cn/api/mcp
+                                        │
+                                        └── OAuth 2.1: dynamic registration + PKCE + 127.0.0.1:8770 callback
 ```
 
-Escape hatches for non-standard layouts: `XMIND_MCP_NODE` and `XMIND_MCP_ENTRY`.
+- `host/index.mjs` exports `apply(ctx)` and registers tools through `ctx.tools.register`
+  (`parameters` is the full JSON Schema supplied by the cloud; if the host rejects it, a permissive
+  schema is retried once);
+- cloud tools register **dynamically** once authorization succeeds — no restart needed;
+- `execute(args, exec)` forwards `exec.signal` to the remote request, so long calls can be cancelled;
+- `tools/call` is **not idempotent**, so only read-only methods retry (a 401 forces one token refresh
+  plus one retry).
 
-## 2. Install
+## 2. Tools
 
-**Plugin manager / market (recommended)**
+Local:
 
-- Sidebar **Plugins → Add plugin**, paste this package's **absolute local path** or a git URL; restart DSH.
-- After publishing to npm: `dsh plugin --profile <profile> add dsh-xmind-mcp`.
-- Once listed on the plugin market: one-click install from **Settings → Plugin Market**.
+| Tool | Purpose |
+|---|---|
+| `xmind_login` | Returns the authorize URL **immediately**; `origin` = `cn` (default, phone) or `global` (email) |
+| `xmind_status` | Auth state, site, token expiry, credential directory, registered cloud tool count |
+| `xmind_logout` | Clears local tokens |
 
-**Manual fallback** (for environments without the plugin manager, e.g. headless/agent sessions):
+Cloud (35, discovered dynamically): `xmind_create_mindmap`, `xmind_read_mindmap`, `xmind_edit_mindmap`,
+`xmind_show_mindmap`, `xmind_list_mindmaps`, `xmind_list_spaces`, `xmind_list_folders`,
+`xmind_create_folder`, `xmind_move_file`, `xmind_rename_file`, `xmind_rename_folder`, `xmind_trash_file`,
+`xmind_restore_file`, `xmind_list_teammates`, `xmind_get_topic`, `xmind_set_topic_attrs`,
+`xmind_set_topic_image`, `xmind_add_relationship`, `xmind_add_boundary`, `xmind_remove_topic`,
+`xmind_remove_annotation`, `xmind_update_relationship`, `xmind_add_summary`, `xmind_add_topic_link`,
+`xmind_set_todo`, `xmind_set_planned_task`, `xmind_clear_task`, `xmind_list_sheets`,
+`xmind_list_resources`, `xmind_add_sheet`, `xmind_set_structure`, `xmind_set_color_theme`,
+`xmind_set_topic_style`, `xmind_whoami`, `xmind_get_mindmap_guide`.
 
-```bash
-node install.mjs              # insert the same row into the profile patch
+## 3. Install
+
+**Plugin manager / market (recommended)**: sidebar **Plugins → Add plugin**, paste this package's path
+or a git URL; or
+
+```powershell
+dsh plugin --profile <profile> add dsh-xmind-mcp
+# pinned: dsh plugin --profile <profile> add github:macroboring/dsh-xmind-mcp#<commit>
+```
+
+> **Restart DSH after upgrading**: the row changes from an "MCP client row" to "the plugin's own row",
+> and only a restart recomposes it.
+
+**Manual fallback** (no plugin manager):
+
+```powershell
+node install.mjs              # writes one row into the profile patch (skipped if already installed as a bundle)
 node install.mjs --uninstall
 node install.mjs --dry-run
 ```
 
-> Pick one route only. If the package is already installed as a bundle, `install.mjs` refuses to add a
-> second hand-written row (two rows with the same `serverName` make the later one fail to load).
+## 4. Authorize once
 
-## 3. Authorize once
+Xmind runs two independent deployments with separate accounts: `app.xmind.cn` (phone, `cn`) and
+`app.xmind.com` (email, `global`).
 
-Xmind runs two independent deployments with separate accounts:
+Ask the agent to call **`xmind_login`** (optionally with `origin: cn`); it returns the link immediately.
+Then, on the same device:
 
-| Site | Sign-in | Argument |
-|---|---|---|
-| `https://app.xmind.cn` | phone number (China) | `cn` (default) |
-| `https://app.xmind.com` | email (international) | `global` |
+1. open the link in a browser;
+2. that browser must already be signed in to the matching site (otherwise the consent page only offers
+   email sign-in and phone accounts get stuck);
+3. approve, wait for "授权成功", close the tab;
+4. check `xmind_status`; cloud tools appear automatically.
 
-```bash
-node cli.mjs login cn
-node cli.mjs login global
-```
-
-Or ask the agent to call `mcp__xmind__login`: it returns the authorization URL **immediately** (and
-tries to open a browser), then finishes in the background, so an interrupted tool call does not lose
-the flow.
-
-### Troubleshooting the consent page
+### Consent-page troubleshooting
 
 | Symptom | Cause / fix |
 |---|---|
-| `client_id is required` | The link lost its query string (stale tab / truncated). Run `login` again. |
-| `Authenticated xmind user required` ("需要用户 id") | No session for that site in this browser. Sign in first at `https://app.xmind.cn`, then open the link; if a login dialog still appears, **press F5 after signing in**. |
+| `client_id is required` | The link lost its query string (stale tab / truncated). Call `xmind_login` again. |
+| `Authenticated xmind user required` ("需要用户 id") | No session for that site. Sign in first, then reopen the link; if a login dialog still appears, **press F5 after signing in**. |
 | Only email sign-in offered | You opened the international site; phone accounts use `cn`. |
-| Browser did not open | Expected on headless devices; copy the printed URL. The callback is `127.0.0.1:8770`, reachable whenever bridge and browser are on the same machine. |
+| Browser did not open | Expected, especially on-device. Copy the URL from `xmind_login`; the callback is `127.0.0.1:8770`, reachable whenever browser and host share the machine. |
 
 Credentials live in `$DSH_HOME/xmind-mcp/`: `client.json`, `tokens.json` (atomic write, mode 0600),
 `settings.json`, `tools-cache.json`, `bridge.log`.
 
-## 4. Examples
+Desktop diagnostics CLI (on-device you can use the same-named tools instead):
 
-- "List my recent Xmind maps"
-- "Turn this week's meeting notes into a mind map and save it to My Maps"
-- "Read 《读书笔记》 and summarize it as Markdown"
-- "Add two branches to 《虚拟语气》: subjunctive conditionals, inversion"
-
-Creating or editing does not display the map; `xmind_show_mindmap` is what puts it in front of the user.
-
-## 5. Diagnostics and tests
-
-```bash
-node cli.mjs doctor     # endpoints → client → token → MCP handshake → tool discovery
-node cli.mjs status
-node cli.mjs site cn    # show or switch the deployment
-node cli.mjs tools
-node cli.mjs call <tool> '{"k":"v"}'
-node cli.mjs raw <method> '{}'
-node cli.mjs logout
+```powershell
+node cli.mjs doctor
+node cli.mjs login cn
+node cli.mjs status / tools / call / raw / site / logout
 ```
 
-```bash
-npm test                        # all three suites, offline
-node selftest.mjs               # protocol contract (8)
-node test/refresh.test.mjs      # token refresh / 401 retry / authorize URL (6)
-node test/install.test.mjs      # install + uninstall + "no machine paths" regression (7)
+## 5. Environment variables
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `XMIND_MCP_ORIGIN` | `https://app.xmind.cn` | Site; international is `https://app.xmind.com` |
+| `XMIND_MCP_TIMEOUT_MS` | `240000` | Per-call timeout for cloud tools (authoring takes 30–120 s) |
+| `XMIND_MCP_HOME` | `<DSH_HOME>/xmind-mcp` | Credential and log directory |
+| `XMIND_MCP_NO_BROWSER` | unset | Set to `1` to skip launching a browser |
+
+## 6. Tests
+
+All offline, no account, no network, **no child processes**:
+
+```powershell
+npm test                          # all four suites
+node test/refresh.test.mjs        # token refresh / 401 retry / authorize URL (6)
+node test/host-plugin.test.mjs    # in-process plugin + on-device acceptance criteria (7)
+node test/install.test.mjs        # install / uninstall (7)
+node test/no-machine-paths.mjs    # release guard: no machine paths in the package
 ```
 
-Set `XMIND_MCP_DEBUG=1` to log full request/response bodies (credentials are never logged).
-Log file: `$DSH_HOME/xmind-mcp/bridge.log`.
+## 7. Known limitations
 
-## 6. Known limitations
+- **Permissions are Xmind's**: what you can read/create/edit depends on your plan; some operations spend credits.
+- **Interactive authorization**: someone has to approve in a signed-in browser.
+- **Switching sites invalidates tokens**: `.cn` and `.com` are not interchangeable.
+- **The tool list comes from the cloud**: it is synced dynamically (it grew from 32 to 35 tools with no
+  change here).
+- **Floating topics are read-only**: the official MCP surface cannot create them; drag a topic onto the
+  canvas in Xmind instead.
+- **Editing an existing map requires the `<!--t:...-->` anchors**: they preserve notes, markers and images.
+- **`link:` installs depend on this directory**: don't move it after installing from a local path.
 
-- **Permissions are Xmind's**: what you can read/create/edit depends on your plan; some operations spend Xmind credits.
-- **Slow calls**: authoring is server-side and typically takes 30–120 s (the bridge allows 4 minutes).
-- **Interactive authorization**: someone has to click approve in a browser that is signed in.
-- **Switching sites invalidates tokens**: `.cn` and `.com` tokens are not interchangeable.
-- **Tool list comes from the cloud**: it is discovered and cached, never hard-coded — it went from 32 to 35 tools with no change here.
-- **Floating topics are read-only**: the official MCP surface cannot create them; drag a topic onto empty canvas in Xmind instead.
-- **Editing an existing map requires the `<!--t:...-->` anchors**: they are what preserves notes, markers and images.
-- **`link:` installs depend on this directory**: don't move it after adding it from a local path.
-
-## 7. Layout
+## 8. Layout
 
 ```
 dsh-xmind-mcp/
-├── cordis.patch.yml   portable bundle patch (no absolute paths)
-├── index.mjs          stdio MCP server: protocol, tool dispatch, naming, cache
+├── cordis.patch.yml   bundle patch (inserts the plugin itself; name = package name, no machine paths)
+├── host/index.mjs     in-process host plugin: ctx.tools.register + OAuth + remote MCP calls
+├── lib/               oauth.mjs · remote.mjs · store.mjs
 ├── cli.mjs            login / diagnostics / direct tool calls
 ├── install.mjs        manual fallback installer
-├── lib/               oauth.mjs · remote.mjs · store.mjs
 ├── locale/            card title + description (en / zh)
-├── test/              offline test suites
-└── PUBLISHING.md      npm / market publishing steps
+├── test/              offline suites
+└── CHANGELOG.md       versions and migration notes
 ```
-
-## 8. Uninstall
-
-```bash
-node install.mjs --uninstall   # if installed the manual way
-node cli.mjs logout            # clear local tokens
-```
-
-If installed through the plugin manager, remove it from the sidebar **Plugins** page.
 
 ## 9. Privacy
 
-This plugin only talks to `app.xmind.cn` / `app.xmind.com`. Tokens stay on this machine; there is no
-telemetry and no third-party relay. It is an independent open-source plugin, **not affiliated with
-Xmind**. See [PROVENANCE.md](PROVENANCE.md) and [LICENSE](LICENSE) (MIT).
+Talks only to `app.xmind.cn` / `app.xmind.com`. Tokens stay on this machine; no telemetry and no
+third-party relay. Independent open-source plugin, **not affiliated with Xmind**. See
+[PROVENANCE.md](PROVENANCE.md) and [LICENSE](LICENSE) (MIT).
